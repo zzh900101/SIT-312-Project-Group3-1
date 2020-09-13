@@ -6,6 +6,8 @@
 const byte MLX90641_address = 0x33; //Default 7-bit unshifted address of the MLX90641
 #define TA_SHIFT 12 //Default shift for MLX90641 in open air
 #define debug  Serial
+#define COLOR_DEPTH 8
+
 uint16_t eeMLX90641[832];
 float MLX90641To[192];
 uint16_t MLX90641Frame[242];
@@ -74,14 +76,18 @@ void setup() {
  
     //Once params are extracted, we can release eeMLX90641 array
  
-    MLX90641_SetRefreshRate(MLX90641_address, 0x05); //Set rate to 16Hz
+    MLX90641_SetRefreshRate(MLX90641_address, 0x05); //Set sensor  refresh rate(4=8HZ,5=16Hz,6=32Hz,7=64Hz)
  
     tft.begin();
     tft.setRotation(3);
     tft.fillScreen(TFT_BLACK);
+
+    Display.setColorDepth(COLOR_DEPTH);
+    
     Display.createSprite(TFT_HEIGHT, TFT_WIDTH);
     Display.fillSprite(TFT_BLACK); 
- 
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+
     // get the cutoff points for the color interpolation routines
     // note this function called when the temp scale is changed
     Getabcd();
@@ -90,6 +96,8 @@ void setup() {
     DrawLegend();    
 }
 void loop() {
+      BatteryIndicator();
+
     // draw a large white border for the temperature area
     Display.fillRect(10, 10, 220, 220, TFT_WHITE);
     for (byte x = 0 ; x < 2 ; x++) {
@@ -116,14 +124,41 @@ void loop() {
     //Displaying the temp at the middle of the Screen
  
     //Push the Sprite to the screen
-    Display.pushSprite(0, 0);
+    Display.pushSprite(0, 0);//(x=0,y=0)
  
     tft.setRotation(3);
     tft.setTextColor(TFT_WHITE);
     tft.drawFloat(HDTemp[35 * 80 + 35], 2, 90, 20);        
- 
 }
-//Returns true if the MLX90640 is detected on the I2C bus
+
+void BatteryIndicator(){
+  // int voltReading = analogRead(battPin);
+  // int volts = (voltReading/1023)*100;
+  int volts = 100;
+
+  if (volts == 100)
+   {
+     tft.setCursor(270,0);
+     tft.print(volts);
+     tft.print("%");
+     delay(1000);    
+   }
+   else if (volts < 10)
+   {
+     tft.setCursor(272,0);
+     tft.print(volts);
+     tft.print("%");
+     delay(1000); 
+   }
+   else
+   {
+     tft.setCursor(271,0);
+     tft.print(volts);
+     tft.print("%");
+     delay(1000);     
+   }
+}
+
 boolean isConnected() {
     Wire.beginTransmission((uint8_t)MLX90641_address);
     if (Wire.endTransmission() != 0) {
@@ -138,41 +173,14 @@ void DisplayGradient() {
  
   // rip through 70 rows
   for (row = 0; row < 70; row ++) {
- 
-    // fast way to draw a non-flicker grid--just make every 10 MLX90641To 2x2 as opposed to 3x3
-    // drawing lines after the grid will just flicker too much
-    if (ShowGrid < 0) {
-      BoxWidth = 3;
-    }
-    else {
-      if ((row % 10 == 9) ) {
-        BoxWidth = 2;
-      }
-      else {
-        BoxWidth = 3;
-      }
-    }
     // then rip through each 70 cols
     for (col = 0; col < 70; col++) {
- 
-      // fast way to draw a non-flicker grid--just make every 10 MLX90641To 2x2 as opposed to 3x3
-      if (ShowGrid < 0) {
-        BoxHeight = 3;
-      }
-      else {
-        if ( (col % 10 == 9)) {
-          BoxHeight = 2;
-        }
-        else {
-          BoxHeight = 3;
-        }
-      }
       // finally we can draw each the 70 x 70 points, note the call to get interpolated color
       Display.fillRect((row * 3) + 15, (col * 3) + 15, BoxWidth, BoxHeight, GetColor(HDTemp[row * 80 + col]));
     }
   }
- 
 }
+
 // my fast yet effective color interpolation routine
 uint16_t GetColor(float val) {
  
@@ -185,6 +193,9 @@ uint16_t GetColor(float val) {
     http://web-tech.ga-usa.com/2012/05/creating-a-custom-hot-to-cold-temperature-color-gradient-for-use-with-rrdtool/index.html
  
   */
+  
+  //https://programmer.ink/think/color-setting-and-text-display-esp32-learning-tour-arduino-version.html
+  // tft.color565(255,0,0) is red, (0,255,0) is green, (0,0,255) is blue 
  
   red = constrain(255.0 / (c - b) * val - ((b * 255.0) / (c - b)), 0, 255);
  
@@ -200,7 +211,6 @@ uint16_t GetColor(float val) {
   else if ((val > d) | (val < a)) {
     green = 0;
   }
- 
   if (val <= b) {
     blue = constrain(255.0 / (a - b) * val - (255.0 * b) / (a - b), 0, 255);
   }
@@ -208,7 +218,7 @@ uint16_t GetColor(float val) {
     blue = 0;
   }
   else if (val > d) {
-    blue = constrain(240.0 / (MaxTemp - d) * val - (d * 240.0) / (MaxTemp - d), 0, 240);
+    blue = constrain(255.0 / (MaxTemp - d) * val - (d * 255.0) / (MaxTemp - d), 0, 255);
   }
  
   // use the displays color mapping function to get 5-6-5 color palet (R=5 bits, G=6 bits, B-5 bits)
@@ -218,12 +228,10 @@ uint16_t GetColor(float val) {
  
 // function to get the cutoff points in the temp vs RGB graph
 void Getabcd() {
- 
   a = MinTemp + (MaxTemp - MinTemp) * 0.2121;
   b = MinTemp + (MaxTemp - MinTemp) * 0.3182;
   c = MinTemp + (MaxTemp - MinTemp) * 0.4242;
   d = MinTemp + (MaxTemp - MinTemp) * 0.8182;
- 
 }
 float get_point(float *p, uint8_t rows, uint8_t cols, int8_t x, int8_t y)
 {
@@ -340,16 +348,15 @@ void DrawLegend() {
     tft.drawFastHLine(260, 200 - j++, 30, GetColor(ii));
   }
  
-  tft.setTextSize(2);
-  tft.setCursor(245, 20);
+  tft.setTextSize(1);
+  tft.setCursor(260, 20);
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
   sprintf(buf, "%2d/%2d", MaxTemp, (int) (MaxTemp * 1.12) + 32);
   tft.print(buf);
  
-  tft.setTextSize(2);
-  tft.setCursor(245, 210);
+  tft.setTextSize(1);
+  tft.setCursor(260, 210);
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
   sprintf(buf, "%2d/%2d", MinTemp, (int) (MinTemp * 1.12) + 32);
   tft.print(buf);
- 
 }
